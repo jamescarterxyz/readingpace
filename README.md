@@ -9,8 +9,7 @@ page to reach, and progress tracking as you go.
 
 ## Try it
 
-Open `index.html` — one file, no build step, no install. (GitHub
-Pages demo link goes here once published.)
+Open `index.html` — one file, no build step, no install. (https://jamescarterxyz.github.io/readingpace/)
 
 ## What it does
 
