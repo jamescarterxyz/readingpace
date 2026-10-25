@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReadingPace — finish the book on time</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px;color:#1e293b}
+  h1{font-size:1.6rem} h2{font-size:1.1rem;margin-top:28px}
+  input,button{font-size:1rem;padding:8px 10px;border-radius:8px;border:1px solid #cbd5e1}
+  button{background:#0f172a;color:#fff;cursor:pointer;border:none}
+  button.secondary{background:#fff;color:#0f172a;border:1px solid #cbd5e1}
+  table{border-collapse:collapse;width:100%;margin-top:12px}
+  th,td{border-bottom:1px solid #e2e8f0;padding:8px;text-align:left}
+  .book{border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:12px 0}
+  .bar{height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden;margin:8px 0}
+  .bar div{height:100%;background:#16a34a}
+  .muted{color:#64748b;font-size:.9rem}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  .behind{color:#dc2626;font-weight:700}
+  .ahead{color:#16a34a;font-weight:700}
+</style>
+</head>
+<body>
+<h1>📖 ReadingPace</h1>
+<p class="muted">Finish the book on time. Tell it the book, how far you are,
+and when you want to finish — it tells you exactly how many pages a
+day, and whether you're ahead or behind. No account, no server.</p>
+
+<h2>Add a book</h2>
+<div class="row">
+  <input id="title" placeholder="Book title" style="flex:1;min-width:160px">
+  <input id="total" type="number" placeholder="Total pages" style="width:110px">
+  <input id="read" type="number" placeholder="Pages read" value="0" style="width:110px">
+  <input id="deadline" type="date">
+  <button id="addBtn">Add book</button>
+</div>
+
+<div id="books"></div>
+
+<script>
+(function () {
+  var KEY = "readingpace-books-v1";
+  var books = load() || [];
+
+  function load() { try { return JSON.parse(localStorage.getItem(KEY)); } catch (e) { return null; } }
+  function save() { localStorage.setItem(KEY, JSON.stringify(books)); }
+  function el(id) { return document.getElementById(id); }
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function dayNum(dateStr) {
+    var d = new Date(dateStr + "T00:00:00");
+    return Math.floor(d.getTime() / 86400000);
+  }
+  function todayStr() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") +
+      "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function plan(book) {
+    var today = dayNum(todayStr());
+    var end = dayNum(book.deadline);
+    var daysLeft = Math.max(1, end - today + 1);
+    var left = Math.max(0, book.total - book.read);
+    var base = Math.floor(left / daysLeft);
+    var extra = left % daysLeft;
+    var rows = [];
+    var cum = book.read;
+    for (var i = 0; i < daysLeft; i++) {
+      var pages = base + (i < extra ? 1 : 0);
+      cum += pages;
+      var d = new Date((today + i) * 86400000);
+      rows.push({ date: d.toLocaleDateString(), pages: pages, cum: cum });
+    }
+    return { daysLeft: daysLeft, left: left, perDay: Math.ceil(left / daysLeft), rows: rows };
+  }
+
+  function render() {
+    save();
+    var box = el("books");
+    if (!books.length) {
+      box.innerHTML = "<p class='muted'>No books yet. Add one above.</p>";
+      return;
+    }
+    box.innerHTML = "";
+    books.forEach(function (book, i) {
+      var p = plan(book);
+      var pct = book.total ? Math.round(100 * book.read / book.total) : 0;
+      var div = document.createElement("div");
+      div.className = "book";
+      var status = "";
+      if (book.read >= book.total) {
+        status = "<span class='ahead'>🎉 Finished!</span>";
+      } else {
+        status = "<span>" + p.perDay + " pages/day for " + p.daysLeft + " days</span>";
+      }
+      var planRows = p.rows.map(function (r) {
+        return "<tr><td>" + r.date + "</td><td>" + r.pages + "</td><td>" + r.cum + "</td></tr>";
+      }).join("");
+      div.innerHTML =
+        "<h2>" + esc(book.title) + "</h2>" +
+        "<div>" + book.read + " / " + book.total + " pages (" + pct + "%) — finish by " + esc(book.deadline) + "</div>" +
+        "<div class='bar'><div style='width:" + pct + "%'></div></div>" +
+        "<div>" + status + "</div>" +
+        "<table><tr><th>Day</th><th>Read</th><th>Reach page</th></tr>" + planRows + "</table>" +
+        "<div class='row'>" +
+        "<input type='number' placeholder='Pages read today' style='width:150px' data-log='" + i + "'>" +
+        "<button data-logbtn='" + i + "'>Log progress</button>" +
+        "<button class='secondary' data-del='" + i + "'>Delete</button>" +
+        "</div>";
+      box.appendChild(div);
+    });
+    box.querySelectorAll("[data-logbtn]").forEach(function (btn) {
+      btn.onclick = function () {
+        var i = +btn.getAttribute("data-logbtn");
+        var input = box.querySelector("[data-log='" + i + "']");
+        var v = parseInt(input.value, 10);
+        if (isNaN(v) || v <= 0) { alert("Enter pages read (a positive number)."); return; }
+        books[i].read = Math.min(books[i].total, books[i].read + v);
+        render();
+      };
+    });
+    box.querySelectorAll("[data-del]").forEach(function (btn) {
+      btn.onclick = function () {
+        books.splice(+btn.getAttribute("data-del"), 1);
+        render();
+      };
+    });
+  }
+
+  el("addBtn").onclick = function () {
+    var title = el("title").value.trim();
+    var total = parseInt(el("total").value, 10);
+    var read = parseInt(el("read").value, 10) || 0;
+    var deadline = el("deadline").value;
+    if (!title) { alert("Give the book a title."); return; }
+    if (isNaN(total) || total <= 0) { alert("Total pages must be a positive number."); return; }
+    if (read < 0 || read > total) { alert("Pages read must be between 0 and the total."); return; }
+    if (!deadline) { alert("Pick a finish date."); return; }
+    if (dayNum(deadline) < dayNum(todayStr())) { alert("Finish date can't be in the past."); return; }
+    books.push({ title: title, total: total, read: read, deadline: deadline });
+    el("title").value = ""; el("total").value = ""; el("read").value = "0"; el("deadline").value = "";
+    render();
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
